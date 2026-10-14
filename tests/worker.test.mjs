@@ -5,13 +5,13 @@ import {readFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 const core = await readFile(new URL('../extension/media-core.js', import.meta.url), 'utf8');
 const worker = (await readFile(new URL('../extension/service-worker.js', import.meta.url), 'utf8')).replace("import './media-core.js';", '');
-function setup() {
+function setup({ready = {type: 'ready', ok: true, protocolVersion: 2, version: '0.2.0', settings: {maxMB: 25, unlimited: false, keepCache: false}, cacheDirectory: '/test/cache'}} = {}) {
   let receiver;
   const sent = [], ports = [];
   const event = () => ({addListener(fn) { this.fire = fn; }});
   const chrome = {
     runtime: {onMessage: {addListener(fn) { receiver = fn; }}, getURL: p => 'chrome-extension://test/' + p,
-      connectNative() { const port = {onMessage: event(), onDisconnect: event(), inputs: [], postMessage(m) { this.inputs.push(m); }, disconnect() { this.disconnected = true; }}; ports.push(port); return port; }},
+      connectNative() { const port = {onMessage: event(), onDisconnect: event(), inputs: [], postMessage(m) { this.inputs.push(m); if (m.type === 'ping' && ready) this.onMessage.fire(ready); }, disconnect() { this.disconnected = true; }}; ports.push(port); return port; }},
     tabs: {sendMessage: async (tab, message) => { sent.push({tab, message}); }, onRemoved: event(), onUpdated: event()}
   };
   const context = vm.createContext({URL, chrome, setTimeout, clearTimeout});
@@ -49,4 +49,27 @@ test('host disconnect before success is an error, and stale job events are ignor
 test('closing or navigating away disconnects and cancels native work', () => {
   const s = setup(); s.receive(request(), sender); s.chrome.tabs.onUpdated.fire(11, {status: 'loading'});
   assert.equal(s.ports[0].disconnected, true);
+});
+test('an older native host cannot silently ignore download preferences', () => {
+  const s = setup({ready: {type: 'ready', version: '0.1.1'}});
+  let response;
+  s.receive(request(), sender, value => { response = value; });
+  assert.equal(response.code, 'UPGRADE');
+  assert.deepEqual(s.ports[0].inputs.map(m => m.type), ['ping']);
+  assert.equal(s.ports[0].disconnected, true);
+});
+test('only the extension settings page can read or change native preferences', async () => {
+  const s = setup();
+  s.receive({type: 'XVC_SAVE_SETTINGS', patch: {unlimited: true}}, sender);
+  s.receive({type: 'XVC_OPEN_CACHE'}, {...sender, url: 'https://evil.test'});
+  assert.equal(s.ports.length, 0);
+  let response;
+  s.receive({type: 'XVC_GET_SETTINGS'}, {url: 'chrome-extension://test/popup.html'}, value => { response = value; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(response.settings.maxMB, 25);
+});
+test('arbitrary cache paths cannot be sent through settings updates', () => {
+  const s = setup(); let response;
+  s.receive({type: 'XVC_SAVE_SETTINGS', patch: {cachePath: '/private/data'}}, {url: 'chrome-extension://test/popup.html'}, value => { response = value; });
+  assert.equal(response.ok, false); assert.equal(s.ports.length, 0);
 });
