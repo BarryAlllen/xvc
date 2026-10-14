@@ -7,7 +7,7 @@
 
 **中文** | [English](README.en.md)
 
-[下载安装包](https://github.com/BarryAlllen/xvc/releases/latest/download/XVC-macOS.zip) · [安装说明](docs/安装与使用.md) · [问题反馈](https://github.com/BarryAlllen/xvc/issues)
+[下载安装包](https://github.com/BarryAlllen/xvc/releases/latest/download/XVC-macOS.zip) · [安装说明](docs/安装与使用.md) · [系统要求与兼容性](docs/compatibility.md) · [问题反馈](https://github.com/BarryAlllen/xvc/issues)
 
 ## 功能
 
@@ -23,13 +23,16 @@
 | 项目 | 当前状态 |
 | --- | --- |
 | macOS 13+ Apple Silicon（M 系列） | 提供安装包；实测范围见验证记录 |
-| Chrome | 已完成真实 X 首页和推文详情页验证 |
+| Chrome | 扩展声明最低 116；真实 X 首页和推文详情页已验证，最低版本未单独验收 |
 | Edge | 提供扩展和本地连接配置，完整链路待验收 |
-| Intel Mac / Windows | 暂未提供安装包 |
+| Intel Mac / Windows / Linux / 移动端 | 当前发行包不支持 |
+| Firefox / Safari / 油猴 | 当前发行物未适配；没有可独立安装的用户脚本 |
 | 视频 | 完整 MP4，大小 ≤ 25,000,000 字节 |
 | HLS / 分段流 | 暂不支持 |
 
 接收应用需要支持文件粘贴；不同应用的接收行为可能不同。当前构建尚未签名、公证或发布到浏览器扩展商店。
+
+完整功能需要同时安装浏览器扩展和本地程序。最低系统要求、实测环境与油猴版的适配路径见 [兼容性说明](docs/compatibility.md)。
 
 ## 安装与使用
 

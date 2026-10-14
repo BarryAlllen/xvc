@@ -4,7 +4,7 @@ Copy an X video as an MP4 file to the macOS clipboard from its right-click menu,
 
 [中文](README.md) | **English**
 
-[Download](https://github.com/BarryAlllen/xvc/releases/latest/download/XVC-macOS.zip) · [Releases](https://github.com/BarryAlllen/xvc/releases/latest) · [Report an issue](https://github.com/BarryAlllen/xvc/issues)
+[Download](https://github.com/BarryAlllen/xvc/releases/latest/download/XVC-macOS.zip) · [Releases](https://github.com/BarryAlllen/xvc/releases/latest) · [Compatibility](docs/compatibility.md) · [Report an issue](https://github.com/BarryAlllen/xvc/issues)
 
 ## Features
 
@@ -20,6 +20,8 @@ Copy an X video as an MP4 file to the macOS clipboard from its right-click menu,
 The downloadable package targets **macOS 13+ on Apple Silicon**. Chrome has been tested on real X timelines and tweet pages. Edge registration is provided, but its complete workflow has not been verified. Intel Mac and Windows packages are not available yet. Not every supported macOS version has been tested.
 
 Only complete MP4 sources are supported; HLS-only video is not supported. The receiving application must accept pasted files. The current package is unsigned and not notarized.
+
+The extension declares Chrome 116 as its minimum version; that exact boundary has not been separately tested. Both the browser extension and native helper are required. Firefox, Safari, Linux and mobile platforms are not supported by the current package. There is no standalone Tampermonkey userscript in v0.1.0: a userscript edition would require a separate bridge to the native helper. See the [compatibility guide](docs/compatibility.md) for declared requirements, tested environments and the proposed userscript route.
 
 ## Install
 

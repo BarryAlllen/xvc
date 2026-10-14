@@ -11,3 +11,4 @@ docs/*
 !docs/安装与使用.md
 !docs/validation.md
 !docs/architecture.md
+!docs/compatibility.md

@@ -68,7 +68,7 @@ await cp('docs/安装与使用.md', 'dist/XVC/安装与使用说明.md');
 await mkdir('dist/XVC/docs', {recursive: true});
 await cp('docs/安装与使用.md', 'dist/XVC/docs/安装与使用.md');
 // Distribute portable instructions and a validation summary, keeping local diagnostics private.
-for (const name of ['validation.md', 'architecture.md']) {
+for (const name of ['validation.md', 'architecture.md', 'compatibility.md']) {
   await cp('docs/' + name, 'dist/XVC/docs/' + name);
 }
 await writeFile('dist/XVC/build-info.json', JSON.stringify({version: manifest.version, extensionId: id, architecture: process.arch, minimumMacOS, builtAt: new Date().toISOString()}, null, 2));
