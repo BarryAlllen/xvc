@@ -76,7 +76,7 @@ func operationLock() throws -> Int32 {
 
 func settingsReply(_ value: Preferences, type: String = "settings", cancelled: Bool = false) throws -> [String: Any] {
     ["type": type, "ok": true, "version": version, "protocolVersion": protocolVersion,
-     "settings": value.json, "cacheDirectory": try cacheDirectory(value).path, "cancelled": cancelled]
+     "settings": value.json, "cacheDirectory": try cacheLocation(value).path, "cancelled": cancelled]
 }
 
 func handleSettings(_ message: [String: Any], type: String) throws {
@@ -129,7 +129,7 @@ func handleSettings(_ message: [String: Any], type: String) throws {
             picker.prompt = "使用此位置"
             picker.canChooseFiles = false; picker.canChooseDirectories = true
             picker.canCreateDirectories = true; picker.allowsMultipleSelection = false
-            picker.directoryURL = try cacheDirectory(value).deletingLastPathComponent()
+            picker.directoryURL = (try? cacheLocation(value).deletingLastPathComponent()) ?? xvcFiles.homeDirectoryForCurrentUser
             guard picker.runModal() == .OK, let selected = picker.url else {
                 Wire.send(try settingsReply(value, cancelled: true)); exit(0)
             }
@@ -185,7 +185,7 @@ enum Wire {
     }
 }
 
-func cacheDirectory(_ preferences: Preferences) throws -> URL {
+func cacheLocation(_ preferences: Preferences) throws -> URL {
     let url: URL
     if let custom = preferences.cachePath { url = URL(fileURLWithPath: custom, isDirectory: true) }
     else if testMode {
@@ -196,6 +196,11 @@ func cacheDirectory(_ preferences: Preferences) throws -> URL {
     } else {
         url = xvcFiles.homeDirectoryForCurrentUser.appendingPathComponent("Library/Caches/XVC/videos", isDirectory: true)
     }
+    return url
+}
+
+func cacheDirectory(_ preferences: Preferences) throws -> URL {
+    let url = try cacheLocation(preferences)
     guard url.standardizedFileURL.resolvingSymlinksInPath().path == url.standardizedFileURL.path else {
         throw XVCError("CACHE", "缓存目录不能是符号链接，请重新选择位置")
     }
