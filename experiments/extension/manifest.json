@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "XVC — MP4 Clipboard Prototype",
+  "version": "0.0.1",
+  "description": "Feasibility probe: network MP4 → Web custom clipboard → byte-for-byte readback. No local file access.",
+  "permissions": ["clipboardWrite", "clipboardRead", "contextMenus"],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "https://video.twimg.com/*",
+    "https://interactive-examples.mdn.mozilla.net/*"
+  ],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_title": "打开 XVC 验证页"},
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src http://127.0.0.1:4173 https://video.twimg.com https://interactive-examples.mdn.mozilla.net; media-src blob:; base-uri 'none'"
+  }
+}

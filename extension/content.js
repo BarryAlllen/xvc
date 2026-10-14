@@ -1,0 +1,137 @@
+(() => {
+  'use strict';
+  if (globalThis.__XVC_CONTENT__) return;
+  globalThis.__XVC_CONTENT__ = true;
+  const core = globalThis.XVCMedia;
+  const tweets = new Map();
+  let jobId = null;
+  let busy = false;
+  let closeTimer;
+  let root, host, menu, panel;
+  const CHANNEL = 'XVC_MEDIA_V1';
+  const styles = `
+    :host{all:initial;color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;color:#edf5ff}
+    *{box-sizing:border-box}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #81baff;outline-offset:4px}
+    [hidden]{display:none!important}.menu{position:fixed;min-width:152px;padding:4px;background:#202327;border:1px solid #3a3f45;border-radius:9px;box-shadow:0 4px 16px #0003;z-index:2;pointer-events:auto}
+    .menu button{width:100%;border:0;border-radius:5px;background:transparent;color:inherit;display:flex;gap:9px;align-items:center;padding:9px 11px;text-align:left;font-size:13px}.menu button:hover{background:#34383e}.menu button:disabled{opacity:.5;cursor:default}.menu svg{width:16px;height:16px}
+    .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:9px;max-width:calc(100vw - 32px);padding:10px 11px 10px 13px;border:1px solid #3a3f45;border-radius:10px;background:#202327;color:#f1f3f5;box-shadow:0 3px 12px #0002;z-index:1;pointer-events:none;font-size:13px;line-height:20px}
+    .indicator{display:flex;flex:0 0 16px;width:16px;height:16px}.spinner{width:16px;height:16px;border:2px solid #737b85;border-top-color:#f1f3f5;border-radius:50%;animation:spin .8s linear infinite}.symbol{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.success .indicator{color:#8bd4b0}.error .indicator{color:#efa799}
+    .message{max-width:290px;overflow-wrap:anywhere}.detail{color:#a6adb5;margin-left:7px;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}.dismiss{pointer-events:auto;flex:0 0 24px;display:grid;place-items:center;width:24px;height:24px;margin:-2px -4px -2px 1px;padding:0;border:0;border-radius:5px;background:none;color:#9ba3ad;font-size:18px;line-height:1}.dismiss:hover{background:#34383e;color:#fff}
+    @keyframes spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.spinner{animation:none}}
+  `;
+  function mount() {
+    if (root) return;
+    host = document.createElement('div');
+    host.id = 'xvc-ui';
+    host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;pointer-events:none;';
+    root = host.attachShadow({mode: 'open'});
+    root.innerHTML = `<style>${styles}</style><div class="menu" role="menu" hidden><button role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg><span>复制视频</span></button></div><div class="toast" role="status" aria-live="polite" aria-atomic="true" hidden><span class="indicator" aria-hidden="true"></span><span class="message"><span class="label"></span><span class="detail"></span></span><button class="dismiss" aria-label="取消下载" title="取消下载">×</button></div>`;
+    (document.body || document.documentElement).append(host);
+    menu = root.querySelector('.menu');
+    panel = root.querySelector('.toast');
+    root.querySelector('.dismiss').onclick = () => {
+      if (busy) {
+        const cancelled = jobId;
+        jobId = null;
+        paint({stage: 'cancelled'});
+        chrome.runtime.sendMessage({type: 'XVC_CANCEL', jobId: cancelled}).catch(() => {});
+      }
+      else hide();
+    };
+  }
+  function hide() { if (!busy && panel) panel.hidden = true; }
+  function mb(bytes) { return `${(Math.max(0, bytes || 0) / 1_000_000).toFixed(1)} MB`; }
+  function paint({stage = 'checking', received = 0, total = 0, message = ''} = {}) {
+    mount(); clearTimeout(closeTimer); panel.hidden = false;
+    const terminal = ['success', 'error', 'cancelled'].includes(stage);
+    busy = !terminal;
+    panel.className = `toast ${stage}`;
+    const indicator = root.querySelector('.indicator');
+    // Keep the same spinner while bytes update so its animation can run continuously.
+    if (terminal || !indicator.querySelector('.spinner')) indicator.innerHTML = !terminal ? '<span class="spinner"></span>'
+      : `<svg class="symbol" viewBox="0 0 20 20"><path d="${stage === 'success' ? 'm4 10 4 4 8-9' : stage === 'cancelled' ? 'M5 10h10' : 'M10 4v7m0 4h.01'}"/></svg>`;
+    const titles = {checking: '准备下载…', downloading: '正在下载', validating: '正在校验…', clipboard: '正在复制…', success: '复制成功', error: '复制失败', cancelled: '已取消'};
+    root.querySelector('.label').textContent = stage === 'error' && message ? message : titles[stage] || titles.checking;
+    root.querySelector('.detail').textContent = stage === 'downloading'
+      ? total ? `${Math.min(100, Math.floor(received / total * 100))}% · ${mb(received)} / ${mb(total)}` : mb(received)
+      : stage === 'success' ? '⌘V 粘贴' : '';
+    const dismiss = root.querySelector('.dismiss');
+    dismiss.setAttribute('aria-label', terminal ? '关闭提示' : '取消下载');
+    dismiss.title = terminal ? '关闭提示' : '取消下载';
+    if (terminal) closeTimer = setTimeout(hide, stage === 'error' ? 6000 : 2200);
+  }
+  function videoAt(event) {
+    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    if (!target || target.closest('#xvc-ui')) return null;
+    const article = target.closest('article[data-testid="tweet"], article');
+    if (!article) return null;
+    const candidates = [...article.querySelectorAll('video')];
+    return candidates.find(video => {
+      const r = video.getBoundingClientRect();
+      const inside = r.width > 0 && r.height > 0 && event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom;
+      return inside && (video === target || video.contains(target) || target.closest('[data-testid="videoPlayer"], [data-testid="videoComponent"]')?.contains(video));
+    }) || null;
+  }
+  async function begin(video) {
+    if (busy) return;
+    jobId = crypto.randomUUID();
+    const startedId = jobId;
+    paint();
+    try {
+      const article = video.closest('article');
+      const permalink = article?.querySelector('a[href*="/status/"] time')?.closest('a')?.getAttribute('href');
+      const descriptor = {poster: video.poster, source: video.currentSrc || video.src,
+        tweetId: permalink?.match(/\/status\/(\d+)/)?.[1], videoCount: article?.querySelectorAll('video').length || 1};
+      let urls = core.selectVideo([...tweets.values()], descriptor);
+      if (!urls.length) {
+        window.postMessage({source: CHANNEL, type: 'request'}, location.origin);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        if (jobId !== startedId) return;
+        urls = core.selectVideo([...tweets.values()], descriptor);
+      }
+      if (!urls.length) {
+        paint({stage: 'error', message: '未找到完整 MP4，请刷新 X 后重试。'});
+        return;
+      }
+      const result = await chrome.runtime.sendMessage({type: 'XVC_START', jobId, urls});
+      if (jobId !== startedId) return;
+      if (!result?.ok) paint({stage: 'error', message: result?.message || '扩展未连接，请刷新 X 后重试。'});
+    } catch { if (jobId === startedId) paint({stage: 'error', message: '扩展连接已失效，请刷新 X 后重试。'}); }
+  }
+  window.addEventListener('message', event => {
+    if (event.source !== window || event.origin !== location.origin || event.data?.source !== CHANNEL || event.data.type !== 'media' || !Array.isArray(event.data.tweets)) return;
+    for (const tweet of event.data.tweets.slice(0, 100)) {
+      if (!/^\d+$/.test(tweet?.id || '') || !Array.isArray(tweet.media)) continue;
+      const media = tweet.media.slice(0, 10).map(core.sanitizeMedia).filter(Boolean);
+      if (media.length) { tweets.delete(tweet.id); tweets.set(tweet.id, {id: tweet.id, media}); }
+    }
+    while (tweets.size > 500) tweets.delete(tweets.keys().next().value);
+  });
+  chrome.runtime.onMessage.addListener(message => {
+    if (message?.source !== 'XVC' || message.jobId !== jobId) return;
+    if (message.type === 'progress') paint(message);
+    else if (message.type === 'success') paint({stage: 'success'});
+    else if (message.type === 'error') paint({stage: message.code === 'CANCELLED' ? 'cancelled' : 'error', message: message.message});
+  });
+  document.addEventListener('contextmenu', event => {
+    if (!event.isTrusted) return;
+    if (menu) menu.hidden = true;
+    const video = videoAt(event);
+    if (!video) return;
+    event.preventDefault(); event.stopImmediatePropagation(); mount();
+    menu.hidden = false;
+    menu.style.left = `${Math.max(8, Math.min(event.clientX, innerWidth - 176))}px`;
+    menu.style.top = `${Math.max(8, Math.min(event.clientY, innerHeight - 56))}px`;
+    const button = menu.querySelector('button');
+    button.disabled = busy;
+    button.onclick = click => { if (!click.isTrusted) return; menu.hidden = true; begin(video); };
+    button.focus({preventScroll: true});
+  }, true);
+  document.addEventListener('pointerdown', event => { if (menu && event.target !== host) menu.hidden = true; }, true);
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { if (menu) menu.hidden = true; hide(); }
+  }, true);
+  addEventListener('scroll', () => { if (menu) menu.hidden = true; }, true);
+  addEventListener('resize', () => { if (menu) menu.hidden = true; });
+  window.postMessage({source: CHANNEL, type: 'request'}, location.origin);
+})();

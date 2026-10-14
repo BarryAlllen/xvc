@@ -1,0 +1,13 @@
+node_modules/
+.prototype-profiles/
+experiments/native-memory/build/
+.DS_Store
+native/build/
+dist/
+test-results/
+experiments/paste-target/
+# Local research, clipboard snapshots and browser screenshots stay on this machine.
+docs/*
+!docs/安装与使用.md
+!docs/validation.md
+!docs/architecture.md

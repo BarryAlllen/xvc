@@ -1,0 +1,76 @@
+# XVC · X Video Copy
+
+Copy an X video as an MP4 file to the macOS clipboard from its right-click menu, then paste it with **⌘V** into an application that accepts files.
+
+[中文](README.md) | **English**
+
+[Download](https://github.com/BarryAlllen/xvc/releases/latest/download/XVC-macOS.zip) · [Releases](https://github.com/BarryAlllen/xvc/releases/latest) · [Report an issue](https://github.com/BarryAlllen/xvc/issues)
+
+## Features
+
+- A **复制视频** (Copy video) menu appears only over a tweet's video area.
+- A small toast at the top of the page shows progress without blocking browsing.
+- Downloads complete MP4 files up to **25,000,000 bytes**, trying a smaller quality when needed.
+- Reports success only after the native file clipboard entry has been written and read back.
+- Removes previous XVC videos when a new download starts, retaining only the current video.
+- Starts the native helper on demand; no background service or local HTTP server is required.
+
+## Requirements and limitations
+
+The downloadable package targets **macOS 13+ on Apple Silicon**. Chrome has been tested on real X timelines and tweet pages. Edge registration is provided, but its complete workflow has not been verified. Intel Mac and Windows packages are not available yet. Not every supported macOS version has been tested.
+
+Only complete MP4 sources are supported; HLS-only video is not supported. The receiving application must accept pasted files. The current package is unsigned and not notarized.
+
+## Install
+
+1. Download `XVC-macOS.zip` from [Releases](https://github.com/BarryAlllen/xvc/releases/latest) and extract it. The package contains the compiled native helper, so end users do not need developer tools.
+2. Run `安装 XVC.command` (Install XVC).
+3. Open `chrome://extensions` or `edge://extensions`, enable Developer mode, and load the package's `extension/` directory as an unpacked extension.
+4. Open XVC and confirm that the local helper is connected, then refresh X.
+5. Right-click a video, select **复制视频**, wait for **复制成功** (Copied), and paste with **⌘V**.
+
+Keep the loaded `extension/` directory at its original location. To uninstall, run `卸载 XVC.command` and remove the browser extension. See the [installation guide](docs/安装与使用.md) for details. A `SHA256SUMS.txt` file is attached to each release.
+
+## Cache and permissions
+
+Videos are stored under `~/Library/Caches/XVC/videos/`. The clipboard contains a native `public.file-url` reference, so the current video file must remain available for pasting.
+
+**Starting a new download removes previous videos, even if the new task later fails or is cancelled.** Concurrent native tasks are rejected to protect an active transfer.
+
+The extension requests only `nativeMessaging`. It extracts video metadata from responses already received by X. The helper accepts requests only from the fixed XVC extension and downloads complete MP4 files from `video.twimg.com`; arbitrary local paths and shell commands are not accepted.
+
+## Repository layout
+
+| Directory | Purpose |
+| --- | --- |
+| `extension/` | Chrome / Edge extension and page UI |
+| `native/` | Swift native helper and installer scripts |
+| `scripts/` | Build, packaging, and development tools |
+| `tests/` | JavaScript tests, synthetic fixtures, and native diagnostics |
+| `docs/` | Installation, architecture, and validation |
+| `experiments/` | Earlier feasibility experiments, outside the production workflow |
+| `.github/` | Issue and pull request templates |
+
+## Development
+
+JavaScript tests require Node.js 20+. Building and native tests also require macOS and Xcode Command Line Tools. There are no third-party npm dependencies.
+
+```sh
+git clone https://github.com/BarryAlllen/xvc.git
+cd xvc
+npm test
+npm run build
+npm run test:native
+```
+
+The build produces `dist/XVC-macOS.zip`, `dist/SHA256SUMS.txt`, and an unpacked `dist/XVC/`. To test locally, run `native/build/xvc-host --install` and load the source `extension/` directory.
+
+`extension/page-main.js` and `extension/content-bundle.js` are generated: edit their source files, rebuild, reload the extension, and refresh X.
+
+`npm run dev` serves a UI fixture on `127.0.0.1:4173`. Native tests use a dedicated cache and **overwrite the system clipboard with a synthetic video file reference**.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), [architecture](docs/architecture.md), and [validation](docs/validation.md). Report vulnerabilities through the process in [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE) · Copyright © 2026 BarryAllen.

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>XVC · MP4 剪贴板验证</title>
+  <link rel="stylesheet" href="probe.css">
+</head>
+<body>
+<main>
+  <p class="eyebrow">X VIDEO COPY · PROTOTYPE 0.0.1</p>
+  <h1>MP4 剪贴板验证</h1>
+  <p>从网络读取完整 MP4，分别探测标准视频类型、自定义格式和 File 复制事件。不创建本地视频文件。</p>
+  <p class="notice">本轮未通过实际视频文件粘贴验收。测试会覆盖当前剪贴板；自定义数据读回一致不代表目标应用能接收视频。读回按钮只验证本原型数据，不会持续监听剪贴板。</p>
+  <label for="source">MP4 网络地址</label>
+  <input id="source" type="url" value="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4" spellcheck="false">
+  <label for="format">待验证的剪贴板类型</label>
+  <select id="format">
+    <option value="video/mp4">video/mp4：尝试标准视频类型，不回退</option>
+    <option value="web video/mp4">web video/mp4：自定义数据对照，不能算视频复制成功</option>
+  </select>
+  <div class="buttons">
+    <button id="copy">读取视频并写入剪贴板</button>
+    <button id="cancel" class="secondary" disabled>取消</button>
+    <button id="write" class="secondary" disabled>写入已准备的视频</button>
+    <button id="copy-file-event" class="secondary" disabled>探测复制事件中的 File</button>
+    <button id="release" class="secondary" disabled>释放源视频</button>
+    <button id="verify" class="secondary">读回并验证</button>
+  </div>
+  <p id="status" role="status" data-stage="idle">准备就绪</p>
+  <video id="preview" controls muted playsinline></video>
+  <div class="fixtures">
+    <span>本地 HTTP 测试源：</span>
+    <button data-fixture="sample.mp4">小视频</button>
+    <button data-fixture="below-limit.mp4">上限 − 1 字节</button>
+    <button data-fixture="exact-limit.mp4">恰好 25MB</button>
+    <button data-fixture="over-limit.mp4">上限 + 1 字节</button>
+    <button data-fixture="unknown-over.mp4">无长度头超限</button>
+    <button data-fixture="not-video.mp4">错误内容</button>
+  </div>
+  <h2>本次检测数据</h2>
+  <pre id="state"></pre>
+  <p class="footnote">这是能力验证页。X 页面中的 blob 播放地址解析、覆盖层命中和最终单次右键体验尚未实现。</p>
+</main>
+<script type="module" src="probe.js"></script>
+</body>
+</html>
