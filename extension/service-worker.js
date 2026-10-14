@@ -4,11 +4,11 @@ const HOST = 'com.xvc.native';
 const jobs = new Map();
 const UPGRADE = '请先运行 v0.2.0 或更新版本的安装脚本，升级 XVC 本地程序。';
 const compatible = value => value?.protocolVersion === 2 && value.settings && typeof value.cacheDirectory === 'string';
-const settingsTypes = {XVC_GET_SETTINGS: 'ping', XVC_PING: 'ping', XVC_SAVE_SETTINGS: 'updateSettings', XVC_PICK_DIRECTORY: 'chooseDirectory', XVC_OPEN_CACHE: 'openCache', XVC_RESET_SETTINGS: 'resetSettings'};
+const settingsTypes = {XVC_GET_SETTINGS: 'ping', XVC_PING: 'ping', XVC_SAVE_SETTINGS: 'updateSettings', XVC_SET_DIRECTORY: 'setDirectory', XVC_OPEN_CACHE: 'openCache', XVC_RESET_SETTINGS: 'resetSettings'};
 function nativeRequest(message) {
   return new Promise(resolve => {
     let port, done = false;
-    const timer = setTimeout(() => finish({ok: false, message: message.type === 'chooseDirectory' ? '目录选择已超时，请重试。' : '本地程序响应超时，请重试。'}), message.type === 'chooseDirectory' ? 300000 : 5000);
+    const timer = setTimeout(() => finish({ok: false, message: '本地程序响应超时，请重试。'}), 5000);
     function finish(result) { if (done) return; done = true; clearTimeout(timer); resolve(result); port?.disconnect(); }
     try {
       port = chrome.runtime.connectNative(HOST);
@@ -87,6 +87,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       }
       native.patch = message.patch;
     }
+    if (message.type === 'XVC_SET_DIRECTORY') native.directory = message.directory;
     nativeRequest(native).then(respond);
     return true;
   }

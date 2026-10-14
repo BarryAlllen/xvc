@@ -18,9 +18,9 @@ const server = createTestServer();
 await new Promise((resolve, reject) => { server.once('error', reject); server.listen(4173, '127.0.0.1', resolve); });
 const results = [];
 let clipboardFile;
-function run(input, {cancel = false, split = false, pickDirectory, onMessage = () => {}} = {}) {
+function run(input, {cancel = false, split = false, onMessage = () => {}} = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(root + 'native/build/xvc-host', ['--test'], {env: {...process.env, XVC_TEST_CACHE: cache, XVC_TEST_ALLOW_HTTP: '1', ...(pickDirectory ? {XVC_TEST_PICK_DIRECTORY: pickDirectory} : {})}});
+    const child = spawn(root + 'native/build/xvc-host', ['--test'], {env: {...process.env, XVC_TEST_CACHE: cache, XVC_TEST_ALLOW_HTTP: '1'}});
     const events = []; let pending = Buffer.alloc(0), stderr = '', cancelled = false;
     const timer = setTimeout(() => { child.kill(); reject(new Error('native test timeout')); }, 30000);
     child.stdin.on('error', () => {});
@@ -160,15 +160,21 @@ try {
     const started = new Promise(resolve => { notify = resolve; });
     const first = run({type: 'copy', jobId: randomUUID(), urls: [localURL + '/fixtures/slow.mp4']}, {onMessage(m) { if (m.received > 0) notify(); }});
     await started;
-    for (const type of ['updateSettings', 'resetSettings', 'chooseDirectory']) {
-      const {result} = await run({type, patch: {keepCache: false}}, {pickDirectory: cache + '-destination'}); assert.equal(result.code, 'BUSY');
+    for (const type of ['updateSettings', 'resetSettings', 'setDirectory']) {
+      const {result} = await run({type, patch: {keepCache: false}, directory: cache + '-destination'}); assert.equal(result.code, 'BUSY');
     }
     const {result} = await first; assert.equal(result.type, 'success'); clipboardFile = cache + '/' + result.filename;
   });
-  await test('directory picker uses a dedicated subfolder, preserves old files and resets ALL defaults', async () => {
+  await test('invalid directory changes preserve the last saved location', async () => {
+    for (const directory of ['', 'relative/folder', cache + '/missing', cache + '/current.json', '/tmp\ninvalid']) {
+      const {result} = await run({type: 'setDirectory', directory}); assert.equal(result.ok, false);
+      const {result: saved} = await run({type: 'ping'}); assert.equal(saved.cacheDirectory, cache);
+    }
+  });
+  await test('directory updates use a dedicated subfolder, preserve old files and reset ALL defaults', async () => {
     const previous = clipboardFile;
     const parent = cache + '-destination'; await mkdir(parent); await writeFile(parent + '/my-video.mp4', 'user file');
-    let {result} = await run({type: 'chooseDirectory'}, {pickDirectory: parent});
+    let {result} = await run({type: 'setDirectory', directory: parent});
     assert.equal(result.cacheDirectory, parent + '/XVC-videos');
     assert.equal(existsSync(previous), true); assert.equal(await readFile(parent + '/my-video.mp4', 'utf8'), 'user file');
     const changed = result.cacheDirectory;

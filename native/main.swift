@@ -113,30 +113,20 @@ func handleSettings(_ message: [String: Any], type: String) throws {
                 if key == "unlimited" { value.unlimited = number.boolValue } else { value.keepCache = number.boolValue }
             }
         }
-    } else if type == "chooseDirectory" {
-        let parent: URL
-        if testMode {
-            guard let path = ProcessInfo.processInfo.environment["XVC_TEST_PICK_DIRECTORY"], path.hasPrefix("/") else {
-                throw XVCError("TEST_CONFIG", "测试目录选择器未配置")
-            }
-            parent = URL(fileURLWithPath: path, isDirectory: true)
-        } else {
-            NSApplication.shared.setActivationPolicy(.accessory)
-            NSApplication.shared.activate(ignoringOtherApps: true)
-            let picker = NSOpenPanel()
-            picker.title = "选择 XVC 缓存位置"
-            picker.message = "XVC 会在所选位置创建 XVC-videos 文件夹。旧目录中的视频会保留。"
-            picker.prompt = "使用此位置"
-            picker.canChooseFiles = false; picker.canChooseDirectories = true
-            picker.canCreateDirectories = true; picker.allowsMultipleSelection = false
-            picker.directoryURL = (try? cacheLocation(value).deletingLastPathComponent()) ?? xvcFiles.homeDirectoryForCurrentUser
-            guard picker.runModal() == .OK, let selected = picker.url else {
-                Wire.send(try settingsReply(value, cancelled: true)); exit(0)
-            }
-            parent = selected
+    } else if type == "setDirectory" {
+        guard let path = message["directory"] as? String, !path.isEmpty, path.utf8.count < 4096,
+              path.rangeOfCharacter(from: .controlCharacters) == nil else {
+            throw XVCError("SETTINGS", "请输入有效的文件夹路径")
         }
-        let canonical = parent.standardizedFileURL.resolvingSymlinksInPath()
-        value.cachePath = (canonical.lastPathComponent == "XVC-videos" ? canonical : canonical.appendingPathComponent("XVC-videos", isDirectory: true)).path
+        let expanded = (path as NSString).expandingTildeInPath
+        guard expanded.hasPrefix("/") else { throw XVCError("SETTINGS", "请使用绝对路径或 ~/ 开头的路径") }
+        let parent = URL(fileURLWithPath: expanded, isDirectory: true).standardizedFileURL.resolvingSymlinksInPath()
+        var isDirectory: ObjCBool = false
+        guard xvcFiles.fileExists(atPath: parent.path, isDirectory: &isDirectory), isDirectory.boolValue,
+              xvcFiles.isWritableFile(atPath: parent.path) else {
+            throw XVCError("CACHE", "保存位置不存在或不可写，请先创建文件夹或选择其他位置")
+        }
+        value.cachePath = (parent.lastPathComponent == "XVC-videos" ? parent : parent.appendingPathComponent("XVC-videos", isDirectory: true)).path
         _ = try cacheDirectory(value)
     } else if type == "resetSettings" { _ = try cacheDirectory(value) }
     else { throw XVCError("PROTOCOL", "未知设置操作") }
@@ -489,7 +479,7 @@ DispatchQueue.global(qos: .userInitiated).async {
         while let message = try Wire.read() {
             DispatchQueue.main.async {
                 let type = message["type"] as? String ?? ""
-                if activeJob == nil && ["ping", "updateSettings", "openCache", "chooseDirectory", "resetSettings"].contains(type) {
+                if activeJob == nil && ["ping", "updateSettings", "openCache", "setDirectory", "resetSettings"].contains(type) {
                     do { try handleSettings(message, type: type) }
                     catch { Wire.send(["type": "error", "ok": false, "code": (error as? XVCError)?.code ?? "SETTINGS", "message": (error as? XVCError)?.message ?? "设置操作失败，请检查目录权限后重试"]); exit(0) }
                     return
