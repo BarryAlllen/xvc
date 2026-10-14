@@ -1,3 +1,29 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><link rel="stylesheet" href="popup.css"><title>XVC</title></head>
-<body><header><img class="logo" src="icons/128.png" width="48" height="48" alt="XVC"><p>X VIDEO COPY</p></header><main><h1>看到视频，复制分享。</h1><p>在 X 视频画面上右键，选择<br>「复制视频」。</p><div class="status" id="status" role="status">正在检查本地程序…</div><button id="check">重新检查连接</button><div class="note"><strong>首次使用</strong><p>先运行安装包中的「安装 XVC.command」，再刷新 X 页面。</p></div><footer>macOS · Chrome / Edge <span>≤ 25 MB</span></footer></main><script src="popup.js"></script></body></html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="popup.css"><title>XVC 设置</title></head>
+<body>
+  <header>
+    <img src="icons/128.png" width="32" height="32" alt="XVC">
+    <div class="brand"><h1>XVC <span>X Video Copy</span></h1><p>在 X 视频上右键复制，⌘V 粘贴</p></div>
+    <span class="version" id="version"></span>
+  </header>
+  <div class="connection"><span class="dot" id="dot"></span><span id="status" role="status">正在连接本地程序…</span><button class="refresh" id="check" aria-label="重新检查连接" title="重新检查连接">↻</button></div>
+  <p class="notice" id="notice" role="alert" hidden></p>
+  <main>
+    <section aria-labelledby="download-heading">
+      <div class="section-head"><h2 id="download-heading">下载大小</h2><output id="size-value" for="size">25 MB</output></div>
+      <div class="slider-area" id="slider-area"><input id="size" aria-label="最大视频大小（MB）" type="range" min="1" max="500" value="25" step="1" disabled><div class="scale"><span>1 MB</span><span>500 MB</span></div></div>
+      <label class="setting-row"><span>无限制<span class="description">不限制视频文件大小</span></span><input id="unlimited" class="switch" role="switch" type="checkbox" disabled></label>
+    </section>
+    <section aria-labelledby="cache-heading">
+      <h2 id="cache-heading">视频缓存</h2>
+      <label class="setting-row"><span>保留历史缓存<span class="description" id="cache-hint">关闭时，新下载会清理旧视频</span></span><input id="keep-cache" class="switch" role="switch" type="checkbox" disabled></label>
+      <div class="directory"><span class="description">缓存目录</span><p id="directory" title="">正在读取…</p><div class="actions"><button id="open-cache" class="pill" disabled>打开目录<span aria-hidden="true">↗</span></button><button id="pick-directory" class="pill" disabled>更改目录<span aria-hidden="true">…</span></button></div></div>
+      <form id="directory-form" class="directory-form" hidden><label for="directory-input">新的保存位置</label><input id="directory-input" type="text" placeholder="例如 ~/Movies" autocomplete="off" spellcheck="false"><p class="description">在此位置创建 XVC-videos，旧视频保留。</p><div class="actions"><button type="submit" class="pill">保存位置<span aria-hidden="true">✓</span></button><button type="button" class="pill" id="cancel-directory">取消<span aria-hidden="true">×</span></button></div></form>
+    </section>
+    <div class="settings-footer"><span id="feedback" role="status" aria-live="polite">更改后自动保存</span><button class="pill reset" id="reset" disabled>恢复默认设置<span aria-hidden="true">↺</span></button></div>
+  </main>
+  <footer><span>作者 <strong>Barry</strong></span><a href="https://github.com/BarryAlllen/xvc" target="_blank" rel="noopener noreferrer">GitHub 仓库 ↗</a></footer>
+  <script src="popup.js"></script>
+</body>
+</html>
