@@ -18,9 +18,9 @@ const server = createTestServer();
 await new Promise((resolve, reject) => { server.once('error', reject); server.listen(4173, '127.0.0.1', resolve); });
 const results = [];
 let clipboardFile;
-function run(input, {cancel = false, split = false, onMessage = () => {}} = {}) {
+function run(input, {cancel = false, split = false, pickDirectory, onMessage = () => {}} = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(root + 'native/build/xvc-host', ['--test'], {env: {...process.env, XVC_TEST_CACHE: cache, XVC_TEST_ALLOW_HTTP: '1'}});
+    const child = spawn(root + 'native/build/xvc-host', ['--test'], {env: {...process.env, XVC_TEST_CACHE: cache, XVC_TEST_ALLOW_HTTP: '1', ...(pickDirectory ? {XVC_TEST_PICK_DIRECTORY: pickDirectory} : {})}});
     const events = []; let pending = Buffer.alloc(0), stderr = '', cancelled = false;
     const timer = setTimeout(() => { child.kill(); reject(new Error('native test timeout')); }, 30000);
     child.stdin.on('error', () => {});
@@ -128,6 +128,56 @@ try {
     await checkClipboardUnchanged();
   });
   await test('failed transfers leave no partial files', async () => { assert.equal((await readdir(cache)).filter(n => n.includes('.part')).length, 0); });
+  await test('preferences persist across processes and reject invalid values without changing saved state', async () => {
+    let {result} = await run({type: 'updateSettings', patch: {maxMB: 1, keepCache: true}});
+    assert.equal(result.ok, true); assert.equal(result.settings.maxMB, 1);
+    for (const patch of [{maxMB: 0}, {maxMB: 501}, {maxMB: 1.5}, {maxMB: true}, {unlimited: 1}, {keepCache: 'yes'}, {cachePath: '/tmp'}]) {
+      const {result: invalid} = await run({type: 'updateSettings', patch}); assert.equal(invalid.code, 'SETTINGS');
+    }
+    ({result} = await run({type: 'ping'}));
+    assert.deepEqual(result.settings, {maxMB: 1, unlimited: false, keepCache: true});
+  });
+  await test('custom limit enforces exact boundary, actual streamed bytes and ignores page overrides', async () => {
+    for (const name of ['above-1mb.mp4', 'unknown-over.mp4']) {
+      const {result} = await run({type: 'copy', jobId: randomUUID(), maxMB: 500, urls: [localURL + '/fixtures/' + name]});
+      assert.equal(result.code, 'TOO_LARGE'); assert.match(result.message, /1 MB/);
+    }
+    const {result} = await run({type: 'copy', jobId: randomUUID(), urls: [localURL + '/fixtures/exact-1mb.mp4']});
+    assert.equal(result.type, 'success'); assert.equal(result.bytes, 1_000_000); clipboardFile = cache + '/' + result.filename;
+  });
+  await test('unlimited bypasses the former 25 MB cap and retention keeps earlier videos', async () => {
+    const previous = clipboardFile;
+    await run({type: 'updateSettings', patch: {unlimited: true}});
+    const {result} = await run({type: 'copy', jobId: randomUUID(), urls: [localURL + '/fixtures/over-limit.mp4']});
+    assert.equal(result.type, 'success'); assert.equal(result.bytes, 25_000_001); assert.equal(existsSync(previous), true);
+    clipboardFile = cache + '/' + result.filename;
+    await checkClipboardUnchanged();
+  });
+  await test('directory changes and preferences are blocked while a transfer holds the global lock', async () => {
+    let notify;
+    const started = new Promise(resolve => { notify = resolve; });
+    const first = run({type: 'copy', jobId: randomUUID(), urls: [localURL + '/fixtures/slow.mp4']}, {onMessage(m) { if (m.received > 0) notify(); }});
+    await started;
+    for (const type of ['updateSettings', 'resetSettings', 'chooseDirectory']) {
+      const {result} = await run({type, patch: {keepCache: false}}, {pickDirectory: cache + '-destination'}); assert.equal(result.code, 'BUSY');
+    }
+    const {result} = await first; assert.equal(result.type, 'success'); clipboardFile = cache + '/' + result.filename;
+  });
+  await test('directory picker uses a dedicated subfolder, preserves old files and resets ALL defaults', async () => {
+    const previous = clipboardFile;
+    const parent = cache + '-destination'; await mkdir(parent); await writeFile(parent + '/my-video.mp4', 'user file');
+    let {result} = await run({type: 'chooseDirectory'}, {pickDirectory: parent});
+    assert.equal(result.cacheDirectory, parent + '/XVC-videos');
+    assert.equal(existsSync(previous), true); assert.equal(await readFile(parent + '/my-video.mp4', 'utf8'), 'user file');
+    const changed = result.cacheDirectory;
+    ({result} = await run({type: 'copy', jobId: randomUUID(), urls: [localURL + '/fixtures/sample.mp4']}));
+    assert.equal(result.type, 'success'); clipboardFile = changed + '/' + result.filename; assert.equal(existsSync(clipboardFile), true);
+    ({result} = await run({type: 'resetSettings'}));
+    assert.deepEqual(result.settings, {maxMB: 25, unlimited: false, keepCache: false}); assert.equal(result.cacheDirectory, cache);
+    assert.equal(existsSync(clipboardFile), true, 'reset must not delete a file referenced by the clipboard');
+    ({result} = await run({type: 'ping'})); assert.equal(result.cacheDirectory, cache); assert.equal(result.settings.maxMB, 25);
+    await checkClipboardUnchanged();
+  });
 } finally {
   server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
   await writeFile(root + 'test-results/native-validation.json', JSON.stringify({date: new Date().toISOString(), cache, clipboardFile, results}, null, 2));

@@ -9,7 +9,7 @@ const sample = await readFile(root + 'tests/fixtures/sample.mp4');
 export const localURL = 'http://127.0.0.1:4173';
 const jobs = new Map();
 const bridgeCache = root + 'test-results/ui-cache';
-const sizes = {'sample.mp4': sample.length, 'below-limit.mp4': 24_999_999, 'exact-limit.mp4': 25_000_000, 'over-limit.mp4': 25_000_001, 'unknown-over.mp4': 25_000_001, 'slow.mp4': 4_000_000};
+const sizes = {'sample.mp4': sample.length, 'exact-1mb.mp4': 1_000_000, 'above-1mb.mp4': 1_000_001, 'below-limit.mp4': 24_999_999, 'exact-limit.mp4': 25_000_000, 'over-limit.mp4': 25_000_001, 'unknown-over.mp4': 25_000_001, 'slow.mp4': 4_000_000};
 function startBridge(url) {
   if (!['slow.mp4', 'sample.mp4', 'over-limit.mp4'].some(name => url === localURL + '/fixtures/' + name)) throw new Error('Only UI test fixtures are allowed');
   const jobId = randomUUID();

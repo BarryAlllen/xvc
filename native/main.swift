@@ -3,10 +3,11 @@ import Foundation
 import CryptoKit
 import AVFoundation
 import Darwin
+import CoreFoundation
 
-let version = "0.1.1"
+let version = "0.2.0"
 let hostName = "com.xvc.native"
-let byteLimit = 25_000_000
+let protocolVersion = 2
 let xvcFiles = FileManager.default
 let args = Array(CommandLine.arguments.dropFirst())
 let testMode = args.first == "--test"
@@ -16,6 +17,131 @@ struct XVCError: Error {
     let code: String
     let message: String
     init(_ code: String, _ message: String) { self.code = code; self.message = message }
+}
+
+struct Preferences: Codable {
+    var maxMB = 25
+    var unlimited = false
+    var keepCache = false
+    var cachePath: String?
+    var byteLimit: Int? { unlimited ? nil : maxMB * 1_000_000 }
+    var json: [String: Any] { ["maxMB": maxMB, "unlimited": unlimited, "keepCache": keepCache] }
+}
+
+func preferencesDirectory() throws -> URL {
+    let directory: URL
+    if testMode {
+        guard let path = ProcessInfo.processInfo.environment["XVC_TEST_CACHE"], path.hasPrefix("/"), path.count > 8 else {
+            throw XVCError("TEST_CONFIG", "测试必须指定独立缓存目录")
+        }
+        let cache = URL(fileURLWithPath: path, isDirectory: true)
+        directory = cache.deletingLastPathComponent().appendingPathComponent(".\(cache.lastPathComponent)-settings", isDirectory: true)
+    } else {
+        directory = xvcFiles.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/XVC", isDirectory: true)
+    }
+    try xvcFiles.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    return directory
+}
+
+func readPreferences() throws -> Preferences {
+    let path = try preferencesDirectory().appendingPathComponent("settings.json")
+    guard xvcFiles.fileExists(atPath: path.path) else { return Preferences() }
+    do {
+        let value = try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: path))
+        guard (1...500).contains(value.maxMB), value.cachePath == nil ||
+                (value.cachePath!.hasPrefix("/") && URL(fileURLWithPath: value.cachePath!).lastPathComponent == "XVC-videos") else {
+            throw XVCError("SETTINGS", "设置文件无效，请检查 XVC 设置")
+        }
+        return value
+    } catch { throw XVCError("SETTINGS", "无法读取 XVC 设置，请检查设置文件") }
+}
+
+func writePreferences(_ value: Preferences) throws {
+    let path = try preferencesDirectory().appendingPathComponent("settings.json")
+    try JSONEncoder().encode(value).write(to: path, options: .atomic)
+    try xvcFiles.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
+}
+
+// A single lock covers all browsers AND all cache locations, including directory changes.
+func operationLock() throws -> Int32 {
+    let path = try preferencesDirectory().appendingPathComponent(".operation.lock")
+    let descriptor = open(path.path, O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
+    guard descriptor >= 0 else { throw XVCError("CACHE", "无法打开 XVC 操作锁") }
+    guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
+        close(descriptor)
+        throw XVCError("BUSY", "另一个视频或设置操作正在进行，请稍后重试")
+    }
+    return descriptor
+}
+
+func settingsReply(_ value: Preferences, type: String = "settings", cancelled: Bool = false) throws -> [String: Any] {
+    ["type": type, "ok": true, "version": version, "protocolVersion": protocolVersion,
+     "settings": value.json, "cacheDirectory": try cacheDirectory(value).path, "cancelled": cancelled]
+}
+
+func handleSettings(_ message: [String: Any], type: String) throws {
+    if type == "ping" {
+        Wire.send(try settingsReply(readPreferences(), type: "ready"))
+        if message["keepAlive"] as? Bool != true { exit(0) }
+        return
+    }
+    if type == "openCache" {
+        let value = try readPreferences(), directory = try cacheDirectory(value)
+        if !testMode && !NSWorkspace.shared.open(directory) { throw XVCError("CACHE", "无法在 Finder 打开缓存目录") }
+        Wire.send(try settingsReply(value)); exit(0)
+    }
+    let descriptor = try operationLock()
+    defer { close(descriptor) }
+    var value = type == "resetSettings" ? Preferences() : try readPreferences()
+    if type == "updateSettings" {
+        guard let patch = message["patch"] as? [String: Any], !patch.isEmpty,
+              Set(patch.keys).isSubset(of: ["maxMB", "unlimited", "keepCache"]) else {
+            throw XVCError("SETTINGS", "设置参数无效")
+        }
+        if let raw = patch["maxMB"] {
+            guard let number = raw as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
+                  (1...500).contains(number.doubleValue), number.doubleValue.rounded() == number.doubleValue else {
+                throw XVCError("SETTINGS", "大小上限需为 1–500 MB 的整数")
+            }
+            value.maxMB = number.intValue
+        }
+        for key in ["unlimited", "keepCache"] {
+            if let raw = patch[key] {
+                guard let number = raw as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else {
+                    throw XVCError("SETTINGS", "开关设置参数无效")
+                }
+                if key == "unlimited" { value.unlimited = number.boolValue } else { value.keepCache = number.boolValue }
+            }
+        }
+    } else if type == "chooseDirectory" {
+        let parent: URL
+        if testMode {
+            guard let path = ProcessInfo.processInfo.environment["XVC_TEST_PICK_DIRECTORY"], path.hasPrefix("/") else {
+                throw XVCError("TEST_CONFIG", "测试目录选择器未配置")
+            }
+            parent = URL(fileURLWithPath: path, isDirectory: true)
+        } else {
+            NSApplication.shared.setActivationPolicy(.accessory)
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            let picker = NSOpenPanel()
+            picker.title = "选择 XVC 缓存位置"
+            picker.message = "XVC 会在所选位置创建 XVC-videos 文件夹。旧目录中的视频会保留。"
+            picker.prompt = "使用此位置"
+            picker.canChooseFiles = false; picker.canChooseDirectories = true
+            picker.canCreateDirectories = true; picker.allowsMultipleSelection = false
+            picker.directoryURL = try cacheDirectory(value).deletingLastPathComponent()
+            guard picker.runModal() == .OK, let selected = picker.url else {
+                Wire.send(try settingsReply(value, cancelled: true)); exit(0)
+            }
+            parent = selected
+        }
+        let canonical = parent.standardizedFileURL.resolvingSymlinksInPath()
+        value.cachePath = (canonical.lastPathComponent == "XVC-videos" ? canonical : canonical.appendingPathComponent("XVC-videos", isDirectory: true)).path
+        _ = try cacheDirectory(value)
+    } else if type == "resetSettings" { _ = try cacheDirectory(value) }
+    else { throw XVCError("PROTOCOL", "未知设置操作") }
+    try writePreferences(value)
+    Wire.send(try settingsReply(value)); exit(0)
 }
 
 func allowedURL(_ value: String) -> URL? {
@@ -59,9 +185,10 @@ enum Wire {
     }
 }
 
-func cacheDirectory() throws -> URL {
+func cacheDirectory(_ preferences: Preferences) throws -> URL {
     let url: URL
-    if testMode {
+    if let custom = preferences.cachePath { url = URL(fileURLWithPath: custom, isDirectory: true) }
+    else if testMode {
         guard let path = ProcessInfo.processInfo.environment["XVC_TEST_CACHE"], path.hasPrefix("/"), path.count > 8 else {
             throw XVCError("TEST_CONFIG", "测试必须指定独立缓存目录")
         }
@@ -69,12 +196,17 @@ func cacheDirectory() throws -> URL {
     } else {
         url = xvcFiles.homeDirectoryForCurrentUser.appendingPathComponent("Library/Caches/XVC/videos", isDirectory: true)
     }
+    guard url.standardizedFileURL.resolvingSymlinksInPath().path == url.standardizedFileURL.path else {
+        throw XVCError("CACHE", "缓存目录不能是符号链接，请重新选择位置")
+    }
     try xvcFiles.createDirectory(at: url, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    guard xvcFiles.isWritableFile(atPath: url.path) else { throw XVCError("CACHE", "缓存目录不可写，请选择其他位置") }
     return url
 }
 
-func inspectMP4(_ data: Data) throws {
-    guard !data.isEmpty && data.count <= byteLimit else { throw XVCError("TOO_LARGE", "视频为空或超过 25 MB，不能复制") }
+func inspectMP4(_ data: Data, byteLimit: Int?) throws {
+    guard !data.isEmpty else { throw XVCError("INVALID_MP4", "视频文件为空，不能复制") }
+    if let byteLimit, data.count > byteLimit { throw XVCError("TOO_LARGE", "视频超过设置上限，不能复制") }
     var offset = 0
     var boxes = Set<String>()
     func integer(_ start: Int, _ count: Int) -> UInt64 {
@@ -103,6 +235,9 @@ final class CopyJob: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     let id: String
     let urls: [URL]
     let cache: URL
+    let preferences: Preferences
+    var byteLimit: Int? { preferences.byteLimit }
+    var limitText: String { "\(preferences.maxMB) MB" }
     var index = 0
     var received = 0
     var expected: Int64 = -1
@@ -115,15 +250,13 @@ final class CopyJob: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     var finished = false
     var lockFD: Int32 = -1
 
-    init(id: String, urls: [URL], cache: URL) { self.id = id; self.urls = urls; self.cache = cache }
+    init(id: String, urls: [URL], cache: URL, preferences: Preferences, lockFD: Int32) {
+        self.id = id; self.urls = urls; self.cache = cache; self.preferences = preferences; self.lockFD = lockFD
+    }
     func begin() {
         do {
             // All browser profiles share this cache. Hold the lock until the host exits so
             // a second task cannot delete a video that is still being downloaded or copied.
-            let lock = cache.deletingLastPathComponent().appendingPathComponent(".\(cache.lastPathComponent).lock")
-            lockFD = open(lock.path, O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
-            guard lockFD >= 0 else { throw XVCError("CACHE", "无法打开 XVC 缓存锁") }
-            guard flock(lockFD, LOCK_EX | LOCK_NB) == 0 else { throw XVCError("BUSY", "另一个视频正在复制，请稍后重试") }
             try clearPreviousFiles()
             start()
         } catch { fail(error as? XVCError ?? XVCError("CACHE", "无法清理上一次的视频缓存，请重试")) }
@@ -138,6 +271,7 @@ final class CopyJob: NSObject, URLSessionDataDelegate, @unchecked Sendable {
             else if name.hasSuffix(".part") { base = String(name.dropLast(5)) }
             else { base = "" }
             guard name == "current.json" || UUID(uuidString: base) != nil else { continue }
+            if preferences.keepCache && (name == "current.json" || name.hasPrefix("XVC-")) { continue }
             let info = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
             // Only remove XVC-owned entries; never follow a symlink or traverse directories.
             guard info.isRegularFile == true || info.isSymbolicLink == true else { continue }
@@ -150,10 +284,10 @@ final class CopyJob: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     }
     func start() {
         guard !finished else { return }
-        guard index < urls.count else { fail(XVCError("TOO_LARGE", "可用的视频清晰度均超过 25 MB，不能复制")); return }
+        guard index < urls.count else { fail(XVCError("TOO_LARGE", "可用的视频清晰度均超过 \(limitText)，不能复制")); return }
         received = 0; expected = -1; failure = nil; lastReport = .distantPast
         let source = urls[index]; index += 1
-        progress("checking", 0.02, message: index > 1 ? "正在尝试更小的视频清晰度" : "连接视频源，检查 25 MB 上限")
+        progress("checking", 0.02, message: index > 1 ? "正在尝试更小的视频清晰度" : preferences.unlimited ? "连接视频源，不限制大小" : "连接视频源，检查 \(limitText) 上限")
         do {
             let path = cache.appendingPathComponent(UUID().uuidString + ".part.mp4")
             guard xvcFiles.createFile(atPath: path.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
@@ -164,7 +298,7 @@ final class CopyJob: NSObject, URLSessionDataDelegate, @unchecked Sendable {
             let config = URLSessionConfiguration.ephemeral
             config.urlCache = nil; config.httpCookieStorage = nil; config.urlCredentialStorage = nil
             config.requestCachePolicy = .reloadIgnoringLocalCacheData
-            config.timeoutIntervalForRequest = 45; config.timeoutIntervalForResource = 180
+            config.timeoutIntervalForRequest = 45; config.timeoutIntervalForResource = 3600
             let session = URLSession(configuration: config, delegate: self, delegateQueue: .main)
             self.session = session
             var request = URLRequest(url: source)
@@ -203,16 +337,16 @@ final class CopyJob: NSObject, URLSessionDataDelegate, @unchecked Sendable {
             failure = XVCError("HTTP", "视频源暂时无法下载，请刷新 X 后重试"); completionHandler(.cancel); return
         }
         expected = response.expectedContentLength
-        if expected > byteLimit {
-            failure = XVCError("TOO_LARGE", "视频超过 25 MB，不能复制"); completionHandler(.cancel); return
+        if let byteLimit, expected > byteLimit {
+            failure = XVCError("TOO_LARGE", "视频超过 \(limitText)，不能复制"); completionHandler(.cancel); return
         }
         progress("downloading", 0.06)
         completionHandler(.allow)
     }
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         guard !finished && failure == nil else { return }
-        guard data.count <= byteLimit - received else {
-            failure = XVCError("TOO_LARGE", "视频实际大小超过 25 MB，已停止下载"); dataTask.cancel(); return
+        guard data.count <= (byteLimit ?? Int.max) - received else {
+            failure = XVCError("TOO_LARGE", "视频实际大小超过 \(limitText)，已停止下载"); dataTask.cancel(); return
         }
         do { try handle?.write(contentsOf: data) }
         catch { failure = XVCError("CACHE", "缓存写入失败，请检查磁盘空间"); dataTask.cancel(); return }
@@ -243,7 +377,7 @@ final class CopyJob: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         do {
             progress("validating", 0.92)
             let data = try Data(contentsOf: partial, options: .mappedIfSafe)
-            try inspectMP4(data)
+            try inspectMP4(data, byteLimit: byteLimit)
             let asset = AVURLAsset(url: partial)
             let tracks = try await asset.loadTracks(withMediaType: .video)
             let duration = try await asset.load(.duration)
@@ -296,7 +430,7 @@ func install(uninstall: Bool) throws {
             }
         }
         if xvcFiles.fileExists(atPath: binary.path) { try xvcFiles.removeItem(at: binary) }
-        print("XVC 本地程序已卸载。视频缓存保留在 ~/Library/Caches/XVC/videos。")
+        print("XVC 本地程序已卸载。设置与视频缓存已保留。")
         return
     }
     let source = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
@@ -330,8 +464,11 @@ DispatchQueue.global(qos: .userInitiated).async {
     do {
         while let message = try Wire.read() {
             DispatchQueue.main.async {
-                if message["type"] as? String == "ping", activeJob == nil {
-                    Wire.send(["type": "ready", "version": version, "limit": byteLimit]); exit(0)
+                let type = message["type"] as? String ?? ""
+                if activeJob == nil && ["ping", "updateSettings", "openCache", "chooseDirectory", "resetSettings"].contains(type) {
+                    do { try handleSettings(message, type: type) }
+                    catch { Wire.send(["type": "error", "ok": false, "code": (error as? XVCError)?.code ?? "SETTINGS", "message": (error as? XVCError)?.message ?? "设置操作失败，请检查目录权限后重试"]); exit(0) }
+                    return
                 }
                 if message["type"] as? String == "cancel", message["jobId"] as? String == activeJob?.id { activeJob?.cancel(); return }
                 guard message["type"] as? String == "copy", activeJob == nil,
@@ -344,10 +481,15 @@ DispatchQueue.global(qos: .userInitiated).async {
                     Wire.send(["type": "error", "jobId": id, "code": "SOURCE", "message": "只允许当前 X 视频 CDN 的完整 MP4"]); exit(0)
                 }
                 do {
-                    let job = CopyJob(id: id, urls: urls, cache: try cacheDirectory())
+                    let descriptor = try operationLock()
+                    let preferences: Preferences
+                    let directory: URL
+                    do { preferences = try readPreferences(); directory = try cacheDirectory(preferences) }
+                    catch { close(descriptor); throw error }
+                    let job = CopyJob(id: id, urls: urls, cache: directory, preferences: preferences, lockFD: descriptor)
                     activeJob = job; job.begin()
                 } catch {
-                    Wire.send(["type": "error", "jobId": id, "code": "CACHE", "message": "无法创建 XVC 专用缓存目录"]); exit(0)
+                    Wire.send(["type": "error", "jobId": id, "code": (error as? XVCError)?.code ?? "CACHE", "message": (error as? XVCError)?.message ?? "无法创建 XVC 专用缓存目录"]); exit(0)
                 }
             }
         }
