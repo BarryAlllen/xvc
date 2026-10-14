@@ -1,7 +1,7 @@
 {
   "name": "xvc",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "XVC Chrome/Edge extension and macOS native file clipboard host",
   "scripts": {
@@ -10,7 +10,8 @@
     "test:native": "node scripts/test-native.mjs",
     "dev": "node scripts/dev-server.mjs",
     "experiment:web": "node experiments/server.mjs",
-    "experiment:native": "node experiments/native-memory/run.mjs"
+    "experiment:native": "node experiments/native-memory/run.mjs",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "license": "MIT",
   "author": "BarryAllen",

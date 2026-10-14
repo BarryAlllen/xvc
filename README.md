@@ -1,3 +1,5 @@
+<img src="extension/icons/128.png" width="80" height="80" alt="XVC 彩色像素图标">
+
 # XVC · X Video Copy
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -56,9 +58,11 @@
 
 ```text
 extension/                 Chrome / Edge 扩展、页面脚本与界面
+assets/brand/              像素品牌图标的 PNG / SVG 大图
 native/                    Swift 本地程序及安装/卸载脚本
 scripts/                   构建、打包与本地测试工具
   build.mjs                生成脚本入口、编译 Swift、打包 ZIP
+  generate-icons.mjs       可编辑的像素网格与多尺寸图标生成
   dev-server.mjs           本机界面验收服务
   test-native.mjs          原生协议与剪贴板集成测试
 tests/                    JavaScript 测试、合成视频与诊断代码
@@ -85,6 +89,8 @@ npm run test:native
 构建生成 `dist/XVC-macOS.zip`、`dist/SHA256SUMS.txt` 和解压后的 `dist/XVC/`。需要本机联调时，运行 `native/build/xvc-host --install`，并在浏览器加载源码中的 `extension/`。
 
 `extension/page-main.js` 与 `extension/content-bundle.js` 是生成文件。修改相应源脚本后运行 `npm run build`，重新加载插件并刷新 X 页面。
+
+彩色像素图标由 `scripts/generate-icons.mjs` 定义。运行 `npm run icons` 可重新生成 16 / 32 / 48 / 128 像素图标及品牌大图；完整构建也会自动生成。
 
 `npm run dev` 启动仅监听 `127.0.0.1:4173` 的界面测试页。`npm run test:native` 使用独立测试缓存，**会用合成视频覆盖系统剪贴板**。
 

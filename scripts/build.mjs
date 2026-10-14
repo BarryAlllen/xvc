@@ -1,8 +1,9 @@
 import {readFile, writeFile, mkdir, cp, chmod, rm, readdir, stat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-import {deflateSync, deflateRawSync} from 'node:zlib';
+import {deflateRawSync} from 'node:zlib';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {crc32, generateIcons} from './generate-icons.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 process.chdir(root);
@@ -27,29 +28,7 @@ const compilation = spawnSync('/usr/bin/swiftc', ['-swift-version', '5', '-targe
   'native/main.swift', 'native/build/Identity.swift', '-o', 'native/build/xvc-host'], {stdio: 'inherit'});
 if (compilation.status !== 0) process.exit(compilation.status || 1);
 
-function crc32(data) {
-  let crc = 0xffffffff;
-  for (const byte of data) { crc ^= byte; for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1)); }
-  return (crc ^ 0xffffffff) >>> 0;
-}
-function chunk(type, data) {
-  const name = Buffer.from(type); const length = Buffer.alloc(4); length.writeUInt32BE(data.length);
-  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(Buffer.concat([name, data])));
-  return Buffer.concat([length, name, data, crc]);
-}
-await mkdir('extension/icons', {recursive: true});
-for (const size of [16, 32, 48, 128]) {
-  const pixels = Buffer.alloc(size * (size * 4 + 1));
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const i = y * (size * 4 + 1) + 1 + x * 4;
-    const u = x / size, v = y / size;
-    const circle = Math.hypot(u - .5, v - .5) < .47;
-    const cross = u > .24 && u < .76 && v > .24 && v < .76 && (Math.abs(u - v) < .055 || Math.abs(u + v - 1) < .055);
-    pixels.set(cross ? [240, 248, 255, 255] : [44, 114, 224, circle ? 255 : 0], i);
-  }
-  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(size); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 6;
-  await writeFile(`extension/icons/${size}.png`, Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(pixels)), chunk('IEND', Buffer.alloc(0))]));
-}
+await generateIcons();
 await mkdir('dist', {recursive: true});
 await rm('dist/XVC', {recursive: true, force: true});
 await mkdir('dist/XVC', {recursive: true});

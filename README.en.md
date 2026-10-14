@@ -1,3 +1,5 @@
+<img src="extension/icons/128.png" width="80" height="80" alt="XVC colorful pixel icon">
+
 # XVC · X Video Copy
 
 Copy an X video as an MP4 file to the macOS clipboard from its right-click menu, then paste it with **⌘V** into an application that accepts files.
@@ -46,6 +48,7 @@ The extension requests only `nativeMessaging`. It extracts video metadata from r
 | Directory | Purpose |
 | --- | --- |
 | `extension/` | Chrome / Edge extension and page UI |
+| `assets/brand/` | PNG / SVG artwork for the pixel icon |
 | `native/` | Swift native helper and installer scripts |
 | `scripts/` | Build, packaging, and development tools |
 | `tests/` | JavaScript tests, synthetic fixtures, and native diagnostics |
@@ -68,6 +71,8 @@ npm run test:native
 The build produces `dist/XVC-macOS.zip`, `dist/SHA256SUMS.txt`, and an unpacked `dist/XVC/`. To test locally, run `native/build/xvc-host --install` and load the source `extension/` directory.
 
 `extension/page-main.js` and `extension/content-bundle.js` are generated: edit their source files, rebuild, reload the extension, and refresh X.
+
+The pixel icon is defined in `scripts/generate-icons.mjs`. Run `npm run icons` to regenerate all extension sizes and the large brand artwork; the full build also runs this step.
 
 `npm run dev` serves a UI fixture on `127.0.0.1:4173`. Native tests use a dedicated cache and **overwrite the system clipboard with a synthetic video file reference**.
 

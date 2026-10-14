@@ -22,6 +22,7 @@ npm run build
 - 浏览器与本地程序通信：`extension/service-worker.js`。
 - 下载、缓存与系统剪贴板：`native/main.swift`。
 - 构建和打包：`scripts/build.mjs`。
+- 彩色像素图标：`scripts/generate-icons.mjs`，运行 `npm run icons` 生成各尺寸 PNG 和品牌 SVG。
 
 `extension/page-main.js` 和 `extension/content-bundle.js` 为生成文件。修改源文件后运行 `npm run build`，一并提交更新的生成文件；重新加载插件并刷新 X 页面后生效。
 

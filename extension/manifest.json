@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
   "name": "XVC — X Video Copy",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "在 X 视频上右键，将不超过 25 MB 的 MP4 复制为可粘贴的文件。需要 XVC macOS 本地程序。",
   "minimum_chrome_version": "116",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy8a86uLSbX5Ng93Nqux5NrwfSI9zlN0GnxAFF8NB2BgiC3J97h04+aDrYWVZHXeqM6ZmTpf5dYtddfKR6iPD0hPxvNv5KGRyjwm77XeIRseP//O1gT9wnx84XC2G1V8TB04H8tie7glwtdxjm8HQTEmoNhKTeGrZtclfhvMa47CwwWBHPi8EoZclhRZ14DMSuGPuhmOR4+BVdsKwUCwIVBA7JuCygfqLZpkADJsoe9jzzvgE+vUJRYNpM0xoP3FIefbrr/FohGa93iXnxWhH1zlqSGtslq4uYL2/wJ89WCjBIjrzOR15bGnqDoXZ6EMrT56i+fm17gnKzaPRAPYf3QIDAQAB",
   "permissions": ["nativeMessaging"],
   "background": {"service_worker": "service-worker.js", "type": "module"},
-  "action": {"default_popup": "popup.html", "default_title": "XVC · X Video Copy"},
+  "action": {"default_popup": "popup.html", "default_title": "XVC · X Video Copy", "default_icon": {"16": "icons/16.png", "32": "icons/32.png"}},
   "content_scripts": [
     {"matches": ["https://x.com/*", "https://twitter.com/*"], "js": ["page-main.js"], "run_at": "document_start", "world": "MAIN"},
     {"matches": ["https://x.com/*", "https://twitter.com/*"], "js": ["content-bundle.js"], "run_at": "document_start", "world": "ISOLATED"}

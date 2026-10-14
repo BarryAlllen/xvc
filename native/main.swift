@@ -4,7 +4,7 @@ import CryptoKit
 import AVFoundation
 import Darwin
 
-let version = "0.1.0"
+let version = "0.1.1"
 let hostName = "com.xvc.native"
 let byteLimit = 25_000_000
 let xvcFiles = FileManager.default
