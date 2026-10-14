@@ -65,6 +65,7 @@ try {
     await test('download → validated MP4 → native clipboard: ' + name, async () => {
       const {result, events} = await run({type: 'copy', jobId: randomUUID(), urls: [localURL + '/fixtures/' + name]});
       assert.equal(result.type, 'success', JSON.stringify(result)); assert.equal(result.verified, true); assert.equal(result.clipboardType, 'public.file-url'); assert.equal(result.bytes, expected);
+      assert.match(result.filename, /^xvc-\d{4}-\d{2}-\d{2}-[a-f0-9]{12}\.mp4$/);
       clipboardFile = cache + '/' + result.filename;
       const data = await readFile(clipboardFile); assert.equal(data.length, expected); assert.equal(createHash('sha256').update(data).digest('hex'), result.sha256);
       assert.deepEqual((await readdir(cache)).filter(n => n.endsWith('.mp4')), [result.filename], 'only the current video is retained');
@@ -151,6 +152,7 @@ try {
     const {result} = await run({type: 'copy', jobId: randomUUID(), urls: [localURL + '/fixtures/over-limit.mp4']});
     assert.equal(result.type, 'success'); assert.equal(result.bytes, 25_000_001); assert.equal(existsSync(previous), true);
     clipboardFile = cache + '/' + result.filename;
+    assert.notEqual(clipboardFile, previous, 'retained videos have unique names');
     await checkClipboardUnchanged();
   });
   await test('directory changes and preferences are blocked while a transfer holds the global lock', async () => {

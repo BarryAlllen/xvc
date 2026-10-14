@@ -209,6 +209,25 @@ func cacheDirectory(_ preferences: Preferences) throws -> URL {
     return url
 }
 
+func isOwnedVideo(_ name: String) -> Bool {
+    if name.hasPrefix("XVC-"), name.hasSuffix(".mp4"), UUID(uuidString: String(name.dropFirst(4).dropLast(4))) != nil { return true }
+    return name.range(of: "^xvc-[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-f0-9]{12}\\.mp4$", options: .regularExpression) != nil
+}
+
+func commitVideo(_ partial: URL, to cache: URL) throws -> URL {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.dateFormat = "yyyy-MM-dd"
+    let date = formatter.string(from: Date())
+    for _ in 0..<8 {
+        let suffix = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(12))
+        let target = cache.appendingPathComponent("xvc-\(date)-\(suffix).mp4")
+        do { try xvcFiles.moveItem(at: partial, to: target); return target }
+        catch { if !xvcFiles.fileExists(atPath: target.path) { throw error } }
+    }
+    throw XVCError("CACHE", "无法生成唯一视频文件名，请重试")
+}
+
 func inspectMP4(_ data: Data, byteLimit: Int?) throws {
     guard !data.isEmpty else { throw XVCError("INVALID_MP4", "视频文件为空，不能复制") }
     if let byteLimit, data.count > byteLimit { throw XVCError("TOO_LARGE", "视频超过设置上限，不能复制") }
@@ -275,8 +294,9 @@ final class CopyJob: NSObject, URLSessionDataDelegate, @unchecked Sendable {
             else if name.hasSuffix(".part.mp4") { base = String(name.dropLast(9)) }
             else if name.hasSuffix(".part") { base = String(name.dropLast(5)) }
             else { base = "" }
-            guard name == "current.json" || UUID(uuidString: base) != nil else { continue }
-            if preferences.keepCache && (name == "current.json" || name.hasPrefix("XVC-")) { continue }
+            let video = isOwnedVideo(name)
+            guard name == "current.json" || video || UUID(uuidString: base) != nil else { continue }
+            if preferences.keepCache && (name == "current.json" || video) { continue }
             let info = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
             // Only remove XVC-owned entries; never follow a symlink or traverse directories.
             guard info.isRegularFile == true || info.isSymbolicLink == true else { continue }
@@ -392,8 +412,7 @@ final class CopyJob: NSObject, URLSessionDataDelegate, @unchecked Sendable {
             }
             guard !finished else { return }
             let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-            let target = cache.appendingPathComponent("XVC-\(UUID().uuidString).mp4")
-            try xvcFiles.moveItem(at: partial, to: target)
+            let target = try commitVideo(partial, to: cache)
             self.partial = nil; final = target
             progress("clipboard", 0.98)
             let item = NSPasteboardItem()
