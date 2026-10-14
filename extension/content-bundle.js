@@ -91,6 +91,7 @@
     .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:9px;max-width:calc(100vw - 32px);padding:10px 11px 10px 13px;border:1px solid #3a3f45;border-radius:10px;background:#202327;color:#f1f3f5;box-shadow:0 3px 12px #0002;z-index:1;pointer-events:none;font-size:13px;line-height:20px}
     .indicator{display:flex;flex:0 0 16px;width:16px;height:16px}.spinner{width:16px;height:16px;border:2px solid #737b85;border-top-color:#f1f3f5;border-radius:50%;animation:spin .8s linear infinite}.symbol{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.success .indicator{color:#8bd4b0}.error .indicator{color:#efa799}
     .message{max-width:290px;overflow-wrap:anywhere}.detail{color:#a6adb5;margin-left:7px;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}.dismiss{pointer-events:auto;flex:0 0 24px;display:grid;place-items:center;width:24px;height:24px;margin:-2px -4px -2px 1px;padding:0;border:0;border-radius:5px;background:none;color:#9ba3ad;font-size:18px;line-height:1}.dismiss:hover{background:#34383e;color:#fff}
+    .settings-action{pointer-events:auto;border:0;border-radius:99px;background:#34383e;color:#edf5ff;white-space:nowrap;padding:3px 9px;font-size:12px}.settings-action:hover{background:#47515d}
     @keyframes spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.spinner{animation:none}}
   `;
   function mount() {
@@ -99,10 +100,11 @@
     host.id = 'xvc-ui';
     host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;pointer-events:none;';
     root = host.attachShadow({mode: 'open'});
-    root.innerHTML = `<style>${styles}</style><div class="menu" role="menu" hidden><button role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg><span>复制视频</span></button></div><div class="toast" role="status" aria-live="polite" aria-atomic="true" hidden><span class="indicator" aria-hidden="true"></span><span class="message"><span class="label"></span><span class="detail"></span></span><button class="dismiss" aria-label="取消下载" title="取消下载">×</button></div>`;
+    root.innerHTML = `<style>${styles}</style><div class="menu" role="menu" hidden><button role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg><span>复制视频</span></button></div><div class="toast" role="status" aria-live="polite" aria-atomic="true" hidden><span class="indicator" aria-hidden="true"></span><span class="message"><span class="label"></span><span class="detail"></span></span><button class="settings-action" hidden>调整上限</button><button class="dismiss" aria-label="取消下载" title="取消下载">×</button></div>`;
     (document.body || document.documentElement).append(host);
     menu = root.querySelector('.menu');
     panel = root.querySelector('.toast');
+    root.querySelector('.settings-action').onclick = () => chrome.runtime.sendMessage({type: 'XVC_OPEN_SETTINGS'}).catch(() => {});
     root.querySelector('.dismiss').onclick = () => {
       if (busy) {
         const cancelled = jobId;
@@ -115,7 +117,7 @@
   }
   function hide() { if (!busy && panel) panel.hidden = true; }
   function mb(bytes) { return `${(Math.max(0, bytes || 0) / 1_000_000).toFixed(1)} MB`; }
-  function paint({stage = 'checking', received = 0, total = 0, message = ''} = {}) {
+  function paint({stage = 'checking', received = 0, total = 0, message = '', code = ''} = {}) {
     mount(); clearTimeout(closeTimer); panel.hidden = false;
     const terminal = ['success', 'error', 'cancelled'].includes(stage);
     busy = !terminal;
@@ -132,6 +134,8 @@
     const dismiss = root.querySelector('.dismiss');
     dismiss.setAttribute('aria-label', terminal ? '关闭提示' : '取消下载');
     dismiss.title = terminal ? '关闭提示' : '取消下载';
+    const settings = root.querySelector('.settings-action');
+    settings.hidden = stage !== 'error' || code !== 'TOO_LARGE';
     if (terminal) closeTimer = setTimeout(hide, stage === 'error' ? 6000 : 2200);
   }
   function videoAt(event) {
@@ -185,7 +189,7 @@
     if (message?.source !== 'XVC' || message.jobId !== jobId) return;
     if (message.type === 'progress') paint(message);
     else if (message.type === 'success') paint({stage: 'success'});
-    else if (message.type === 'error') paint({stage: message.code === 'CANCELLED' ? 'cancelled' : 'error', message: message.message});
+    else if (message.type === 'error') paint({stage: message.code === 'CANCELLED' ? 'cancelled' : 'error', message: message.message, code: message.code});
   });
   document.addEventListener('contextmenu', event => {
     if (!event.isTrusted) return;
