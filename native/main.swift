@@ -5,7 +5,7 @@ import AVFoundation
 import Darwin
 import CoreFoundation
 
-let version = "0.2.0"
+let version = "0.2.1"
 let hostName = "com.xvc.native"
 let protocolVersion = 2
 let xvcFiles = FileManager.default

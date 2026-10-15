@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 const core = await readFile(new URL('../extension/media-core.js', import.meta.url), 'utf8');
 const worker = (await readFile(new URL('../extension/service-worker.js', import.meta.url), 'utf8')).replace("import './media-core.js';", '');
-function setup({ready = {type: 'ready', ok: true, protocolVersion: 2, version: '0.2.0', settings: {maxMB: 25, unlimited: false, keepCache: false}, cacheDirectory: '/test/cache'}} = {}) {
+function setup({ready = {type: 'ready', ok: true, protocolVersion: 2, version: '0.2.1', settings: {maxMB: 25, unlimited: false, keepCache: false}, cacheDirectory: '/test/cache'}} = {}) {
   let receiver;
   const sent = [], ports = [];
   const event = () => ({addListener(fn) { this.fire = fn; }});
