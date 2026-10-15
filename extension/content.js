@@ -117,7 +117,18 @@
     else if (message.type === 'success') paint({stage: 'success'});
     else if (message.type === 'error') paint({stage: message.code === 'CANCELLED' ? 'cancelled' : 'error', message: message.message, code: message.code});
   });
-  document.addEventListener('contextmenu', event => {
+  // X handles the press before contextmenu and may start/unmute the player.
+  // Capture secondary-button gestures at window level before site handlers;
+  // leave primary-button playback and volume controls entirely to the page.
+  for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'auxclick', 'click']) {
+    window.addEventListener(type, event => {
+      const secondary = event.button === 2 || (event.button === 0 && event.ctrlKey);
+      if (!event.isTrusted || !secondary || !videoAt(event)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, {capture: true, passive: false});
+  }
+  window.addEventListener('contextmenu', event => {
     if (!event.isTrusted) return;
     if (menu) menu.hidden = true;
     const video = videoAt(event);
