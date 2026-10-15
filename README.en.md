@@ -35,6 +35,8 @@ The extension declares Chrome 116 as its minimum version; that exact boundary ha
 
 Keep the loaded `extension/` directory at its original location. To uninstall, run `卸载 XVC.command` and remove the browser extension. See the [installation guide](docs/安装与使用.md) for details. A `SHA256SUMS.txt` file is attached to each release.
 
+Copying preserves the player’s existing mute and volume settings, including macOS Control-click.
+
 ## Settings in v0.2.0
 
 Open XVC from the toolbar or the extension manager’s options link. Settings are shared by Chrome and Edge on this Mac, persisted in `~/Library/Application Support/XVC/settings.json`.
